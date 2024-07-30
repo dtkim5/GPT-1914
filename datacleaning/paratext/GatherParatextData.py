@@ -1,29 +1,21 @@
 # Train paratext model
 
-# This script trains a model to trim front matter and back matter from a volume.
-# Many of the functions here will be reused in the script that applies the model
-# at scale. For instance, a lot of the code here is translating a text file,
-# with pages marked by <pb> tags, into a format that can be used by the model.
-# All of those functions will be reused in the script that applies the model.
+# This script translates a text file, with pages marked by <pb> tags, 
+# into a matrix of features. Features have been selected to permit 
+# training a model that distinguishes paratext from body text.
+# These functions will be reused in the script that applies the model
+# at scale. Model training will happen in a Jupyter notebook.
 
-# We will also import training data, which consists of 400+ volumes with pages
+# We also import training data, which consists of 400+ volumes with pages
 # manually tagged to indicate content type. This data is much richer than
 # we actually need: it distinguishes indexes from tables of contents, for instance,
 # and verse drama from prose drama! For our purposes, we will simplify it to
-# just three categories: front matter, body text, and back matter.
-
-# The model we train will use a random forest algorithm, because we have
-# some reason to suspect that the effect of variables may be nonlinear,
-# with complex interactions.  
+# just two categories: paratext and body text.
 
 # import modules
 
 import numpy as np
 import pandas as pd
-
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report
 
 import os, math
 from collections import Counter
@@ -205,11 +197,13 @@ def add_relative_features(pages, htid):
     and adds relative features to each dictionary.
     '''
 
-    volmeanwords = np.mean([d['nwords'] for d in pages])
-    volmeanwordlength = np.mean([d['meanwordlength'] for d in pages])
-    volmeantop2000 = np.mean([d['top2000words'] for d in pages])
-    volmeansdlinelen = np.mean([d['sdlinelen'] for d in pages])
-    volmeanlinelen = np.mean([d['meanlinelen'] for d in pages])
+    # We calculate means ignoring zeroes.
+
+    volmeanwords = np.mean([d['nwords'] for d in pages if d['nwords'] != 0])
+    volmeanwordlength = np.mean([d['meanwordlength'] for d in pages if d['meanwordlength'] != 0])
+    volmeantop2000 = np.mean([d['top2000words'] for d in pages if d['top2000words'] != 0])
+    volmeansdlinelen = np.mean([d['sdlinelen'] for d in pages if d['sdlinelen'] != 0])
+    volmeanlinelen = np.mean([d['meanlinelen'] for d in pages if d['meanlinelen'] != 0])
 
     for i, page in enumerate(pages):
 
@@ -229,7 +223,8 @@ def add_relative_features(pages, htid):
         # For some features, zero is not an informative value. It tells us only that
         # there are no words on the page, and that's something we already know from
         # the nwords feature. So we replace zero with the volume average, which makes
-        # differences in this variable more informative
+        # differences in this variable more informative by eliminating the outlier
+        # status of pages with no words.
 
         if page['meanwordlength'] == 0:
             page['meanwordlength'] = volmeanwordlength
