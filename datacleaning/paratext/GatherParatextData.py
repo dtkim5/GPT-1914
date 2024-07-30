@@ -1,4 +1,4 @@
-# Train paratext model
+# Gather paratext training data
 
 # This script translates a text file, with pages marked by <pb> tags, 
 # into a matrix of features. Features have been selected to permit 
