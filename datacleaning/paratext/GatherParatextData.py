@@ -191,6 +191,11 @@ def page_features(page, pagenum, totalpgcount):
 # nwordsminusprev: the number of words on this page minus the number of words on the previous page
 # top2000minusprev: the proportion of words on this page that are in the top 2000 minus the proportion on the previous page
 
+def safe_mean(values):
+    # Calculate the mean, but return 0 if the list is empty
+    return np.mean(values) if values else 0
+
+
 def add_relative_features(pages, htid):
     '''
     This function accepts a list of dictionaries produced by the page_features function,
@@ -199,11 +204,11 @@ def add_relative_features(pages, htid):
 
     # We calculate means ignoring zeroes.
 
-    volmeanwords = np.mean([d['nwords'] for d in pages if d['nwords'] != 0])
-    volmeanwordlength = np.mean([d['meanwordlength'] for d in pages if d['meanwordlength'] != 0])
-    volmeantop2000 = np.mean([d['top2000words'] for d in pages if d['top2000words'] != 0])
-    volmeansdlinelen = np.mean([d['sdlinelen'] for d in pages if d['sdlinelen'] != 0])
-    volmeanlinelen = np.mean([d['meanlinelen'] for d in pages if d['meanlinelen'] != 0])
+    volmeanwords = safe_mean([d['nwords'] for d in pages if d['nwords'] != 0])
+    volmeanwordlength = safe_mean([d['meanwordlength'] for d in pages if d['meanwordlength'] != 0])
+    volmeantop2000 = safe_mean([d['top2000words'] for d in pages if d['top2000words'] != 0])
+    volmeansdlinelen = safe_mean([d['sdlinelen'] for d in pages if d['sdlinelen'] != 0])
+    volmeanlinelen = safe_mean([d['meanlinelen'] for d in pages if d['meanlinelen'] != 0])
 
     for i, page in enumerate(pages):
 
@@ -232,6 +237,8 @@ def add_relative_features(pages, htid):
             page['sdlinelen'] = volmeansdlinelen
         if page['meanlinelen'] == 0:
             page['meanlinelen'] = volmeanlinelen
+        if page['top2000words'] == 0:
+            page['top2000words'] = volmeantop2000
 
         # Some features will vary across volumes, but we want to know how they vary
         # within a volume. So we subtract the volume average from the page value.
@@ -254,6 +261,17 @@ def add_relative_features(pages, htid):
         page['pagefrac^2'] = page['pagefrac'] ** 2
         page['backfrac^2'] = page['backfrac'] ** 2
         page['htid'] = htid  # we need this to separate training and test sets by volume
+    
+    # # Check if the mean of relative features is zero
+    # mean_wordlengthminusmean = np.mean([d['wordlengthminusmean'] for d in pages])
+    # mean_linelenminusmean = np.mean([d['linelenminusmean'] for d in pages])
+    # mean_top2000minusmean = np.mean([d['top2000minusmean'] for d in pages])
+    # mean_nwordsminusmean = np.mean([d['nwordsminusmean'] for d in pages])
+
+    # print("Mean of wordlengthminusmean:", mean_wordlengthminusmean)
+    # print("Mean of linelenminusmean:", mean_linelenminusmean)
+    # print("Mean of top2000minusmean:", mean_top2000minusmean)
+    # print("Mean of nwordsminusmean:", mean_nwordsminusmean)
     
     return pages
 
@@ -345,7 +363,7 @@ def main():
     print('Total pages:', len(allpages))
 
     featurematrix = pd.DataFrame(allpages)
-    featurematrix.to_csv('/Users/tunder/Dropbox/python/GPT-1914/datacleaning/frontback/featurematrix.csv', index = False)
+    featurematrix.to_csv('/Users/tunder/Dropbox/python/GPT-1914/datacleaning/paratext/featurematrix.csv', index = False)
 
 
 # Now we have a Counter of word frequencies associated with paratext and with text.
