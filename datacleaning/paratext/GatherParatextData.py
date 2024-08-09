@@ -29,16 +29,19 @@ paratext = {'front', 'title', 'toc', 'impri', 'bookp', 'subsc', 'index', 'back',
              'bibli', 'gloss', 'libra', 'ads'}
 
 paratext_clues = {'v', 'c', 'iv', 'p', 'pp', 'contents', 'd', 'ib', 'illustrations', 'esq', 'cloth',
-         'iii', 'vols', 'by', 'ii', 'ibid', 'edition', 's', 'vo', 'book', 'volume', 'page',
-         'edited', 'chapter', 'author', 'price', 'illustrated', 'extra',
+         'iii', 'vols', 'ii', 'ibid', 'edition', 's', 'vo', 'book', 'volume', 'page', 'shillings',
+         'edited', 'chapter', 'author', 'price', 'illustrated', 'extra', 'dollars', 'cents', 'published',
          'library', 'rev', 'crown', 'j', 'v', 'w', 'index', 'vi', 'viii', 'ix', 'x', 'xi', 'xii'}
+
+byofset = {'by', 'of'}
+priceset = {'$', '£', '¢'}
 
 with open('/Users/tunder/Dropbox/python/GPT-1914/datacleaning/MainDictionary.txt', encoding = 'utf-8') as file:
     lines = file.readlines()
 
 for i, line in enumerate(lines):
     word = line.split('\t')[0].strip()
-    if word in paratext_clues or len(word) < 2:
+    if word in paratext_clues or word in byofset or len(word) < 2:
         continue
     if len(top20lexicon) < 25:
         top20lexicon.add(word)
@@ -46,6 +49,14 @@ for i, line in enumerate(lines):
         top2000lexicon.add(word)
     else:
         break
+
+# We also import a list of English verbs, which can be diagnostic since
+# paratext is often a list or catalog, lacking verbs.
+
+verbs = set()
+with open('/Users/tunder/Dropbox/python/GPT-1914/datacleaning/englishverbs.txt', encoding = 'utf-8') as file:
+    for line in file:
+        verbs.add(line.strip())
 
 def paginate_file(filepath):
     ''' This function takes a text file with <pb> tags and returns a list of pages.
@@ -94,14 +105,14 @@ def paginate_file(filepath):
 # sdlinelen: the standard deviation of linelength (in characters)
 # meanwordlength: the mean length of words
 # startupper: the proportion of lines that start with an uppercase letter
-# top20words: the proportion of words that are in the top 20 most common words
+# verbs: the proportion of words in our list of verbs
 # top2000words: the proportion of words that are in the top 2000 most common words
 
 def page_features(page, pagenum, totalpgcount):
     ''' This function takes a list of lines and returns a dictionary of features.
     '''
 
-    global top20lexicon, top2000lexicon, paratext_clues
+    global top20lexicon, top2000lexicon, paratext_clues, byofset, verbs, priceset
 
     pagefrac = pagenum / totalpgcount
     backnum = totalpgcount - pagenum
@@ -113,12 +124,14 @@ def page_features(page, pagenum, totalpgcount):
     npunct = 0
     nupper = 0
     nother = 0
+    nprice = 0
     wordlengths = []
     linelengths = []
     startupper = 0
-    top20words = 0
+    verbwords  = 0
     top2000words = 0
     paratextwords = 0
+    byofwords = 0
     wordcounts = Counter()
     
     for line in page:
@@ -135,8 +148,10 @@ def page_features(page, pagenum, totalpgcount):
                 lowerword = ''.join([char.lower() for char in word if char.isalpha()])
                 if len(lowerword) > 0:
                     wordcounts[lowerword] += 1
-                if lowerword in top20lexicon:
-                    top20words += 1
+                if lowerword in byofset:
+                    byofwords += 1
+                if lowerword in verbs:
+                    verbwords += 1
                 if lowerword in top2000lexicon:
                     top2000words += 1
                 if lowerword in paratext_clues:
@@ -153,6 +168,8 @@ def page_features(page, pagenum, totalpgcount):
                     
                     if char.isupper():
                         nupper += 1
+                    if char in priceset:
+                        nprice += 1
     
     meanlinelen = np.mean(linelengths) if len(linelengths) > 0 else 0
     sdlinelen = np.std(linelengths) if len(linelengths) > 1 else 0
@@ -164,23 +181,27 @@ def page_features(page, pagenum, totalpgcount):
         fracpunct = npunct / nchars
         fracupper = nupper / nchars
         fracother = nother / nchars
+        fracprice = nprice / nchars
     else:
         fracalpha = 1
         fracnumeric = 0
         fracpunct = 0
         fracupper = 0
         fracother = 0
+        fracprice = 0
     startupper = startupper / nlines if nlines > 0 else 0
-    top20words = top20words / nwords if nwords > 0 else 0
+    verbwords = verbwords / nwords if nwords > 0 else 0
     top2000words = top2000words / nwords if nwords > 0 else 0
     paratextwords = paratextwords / nwords if nwords > 0 else 0
+    byofwords = byofwords / nwords if nwords > 0 else 0
 
     pg_feature_dict = {'pagenum': pagenum, 'pagefrac': pagefrac, 'backnum': backnum, 'backfrac': backfrac,
             'nlines': nlines, 'nwords': nwords, 'nalpha': nalpha, 'fracalpha': fracalpha,
             'nnumeric': nnumeric, 'fracnumeric': fracnumeric, 'npunct': npunct, 'fracpunct': fracpunct,
             'nupper': nupper, 'fracupper': fracupper, 'nother': nother, 'fracother': fracother,
             'meanlinelen': meanlinelen, 'sdlinelen': sdlinelen, 'meanwordlength': meanwordlength,
-            'startupper': startupper, 'top20words': top20words, 'top2000words': top2000words, 'paratextwords': paratextwords}
+            'startupper': startupper, 'verbs': verbwords, 'top2000words': top2000words, 'paratextwords': paratextwords,
+            'byofwords': byofwords, 'fracprice': fracprice}
     return pg_feature_dict, wordcounts
 
 # Now for each page we add the following relative features:
@@ -212,19 +233,6 @@ def add_relative_features(pages, htid):
 
     for i, page in enumerate(pages):
 
-        # Some features are potentially informative in themselves, but also
-        # because a change signals a transition from one part of the volume to another.
-
-        if i > 0:
-            nwordsminusprev = page['nwords'] - pages[i - 1]['nwords']
-            top2000minusprev = page['top2000words'] - pages[i - 1]['top2000words']
-        else:
-            nwordsminusprev = 0
-            top2000minusprev = 0
-
-        page['nwordsminusprev'] = nwordsminusprev
-        page['top2000minusprev'] = top2000minusprev
-
         # For some features, zero is not an informative value. It tells us only that
         # there are no words on the page, and that's something we already know from
         # the nwords feature. So we replace zero with the volume average, which makes
@@ -252,6 +260,25 @@ def add_relative_features(pages, htid):
         page['wordlengthminusmean'] = page['meanwordlength'] - volmeanwordlength
         page['linelenminusmean'] = page['meanlinelen'] - volmeanlinelen
         page['top2000minusmean'] = page['top2000words'] - volmeantop2000
+
+        # Some features are potentially informative in themselves, but also
+        # because a change signals a transition from one part of the volume to another.
+
+        if i > 2:
+            nwordsminusprev = page['nwords'] - np.mean([pages[i - 1]['nwords'], pages[i - 2]['nwords'], pages[i - 3]['nwords']])
+            top2000minusprev = page['top2000words'] - np.mean([pages[i - 1]['top2000words'], pages[i - 2]['top2000words'], pages[i - 3]['top2000words']])
+        elif i > 1:
+            nwordsminusprev = page['nwords'] - np.mean([pages[i - 1]['nwords'], pages[i - 2]['nwords']])
+            top2000minusprev = page['top2000words'] - np.mean([pages[i - 1]['top2000words'] , pages[i - 2]['top2000words']])
+        elif i > 0:
+            nwordsminusprev = page['nwords'] - pages[i - 1]['nwords']
+            top2000minusprev = page['top2000words'] - pages[i - 1]['top2000words']
+        else:
+            nwordsminusprev = 0
+            top2000minusprev = 0
+
+        page['nwordsminusprev'] = nwordsminusprev
+        page['top2000minusprev'] = top2000minusprev
 
         # We also calculate the absolute distance from the volume's center,
         # and quadratic versions of all positional features.
@@ -322,6 +349,7 @@ def main():
 
     maproot1 = '/Users/tunder/work/genre/1700-1899features/genremaps/'
     maproot2 = '/Users/tunder/work/genre/1900-1922features/genremaps/'
+    maproot3 = '/Users/tunder/Dropbox/python/GPT-1914/metadata/serialmaps/'
 
     textroot = '/Users/tunder/Dropbox/python/GPT-1914/datacleaning/paratext_training_data/'
 
@@ -358,12 +386,30 @@ def main():
             print(ctr)
         allpages.extend(pages)
 
+    new_textroot = '/Users/tunder/Dropbox/python/GPT-1914/metadata/serials/'
+    
+    for filename in os.listdir(maproot3):
+        if not filename.endswith('.map'):
+            continue
+        if filename in alreadyhave:
+            continue
+        htid = filename.replace('.map', '')
+        
+        pages, textwordcounts, paratextwordcounts = labeled_volume(htid, new_textroot, maproot3)
+       
+        corpustext += textwordcounts
+        corpusparatext += paratextwordcounts
+        ctr += 1
+        if ctr % 20 == 1:
+            print(ctr)
+        allpages.extend(pages)
+
 
     print('Total volumes:', ctr)
     print('Total pages:', len(allpages))
 
     featurematrix = pd.DataFrame(allpages)
-    featurematrix.to_csv('/Users/tunder/Dropbox/python/GPT-1914/datacleaning/paratext/featurematrix.csv', index = False)
+    featurematrix.to_csv('/Users/tunder/Dropbox/python/GPT-1914/datacleaning/paratext/newfeaturematrix.csv', index = False)
 
 
 # Now we have a Counter of word frequencies associated with paratext and with text.
